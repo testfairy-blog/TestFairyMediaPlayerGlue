@@ -73,7 +73,7 @@ public final class TestFairyMediaPlayerGlue {
     //////////////////////////////////////////////////////////////
 
     // Factories
-    public static TestFairyMediaPlayerGlue.PlayerWrapper createByWrapping(@NonNull final MediaPlayer mediaPlayer) {
+    public static PlayerWrapper createByWrapping(@NonNull final MediaPlayer mediaPlayer) {
         if (mediaPlayer == null) {
             throw new NullPointerException("MediaPlayer cannot be null.");
         }
