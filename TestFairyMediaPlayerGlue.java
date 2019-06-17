@@ -24,7 +24,7 @@ import com.testfairy.TestFairy;
 //   MediaPlayerAdapter myPlayerAdapter = MediaPlayerAdapter(myPlaybackVideoFragment.getContext());
 //   PlaybackTransportControlGlue transportGlue = PlaybackTransportControlGlue(myPlaybackVideoFragment.getActivity(), myPlayerAdapter);
 //   transportGlue.setHost(myGlueHost);
-//   TestFairyMediaPlayerGlue.PlayerWrapper wrapper = TestFairyMediaPlayerGlue.createByWrapping(myPlayerAdapter);
+//   TestFairyMediaPlayerGlue.PlayerAdapterWrapper wrapper = TestFairyMediaPlayerGlue.createByWrapping(myPlayerAdapter);
 //
 //
 // Returned wrappers are able to assign additional listeners for all captured events without breaking the internal
