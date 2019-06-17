@@ -34,37 +34,39 @@ public final class TestFairyMediaPlayerGlue {
 
     // State
     private final CreatedFrom createdFrom;
-    private final TestFairyBridge testFairyBridge;
+    private TestFairyBridge testFairyBridge;
     //////////////////////////////////////////////////////////////
 
     // Private constructor for internal use, includes bridging logic
     private TestFairyMediaPlayerGlue(CreatedFrom createdFrom) {
+        // Source of creation (player or adapter or some other creation mechanism)
         this.createdFrom = createdFrom;
 
+        // Default bridge, can be overridden with a setter
         this.testFairyBridge = new TestFairyBridge() {
             @Override
             public void onBufferingUpdate(int percent) {
-                // TODO : call TestFairy.addEvent
+                TestFairy.addEvent(String.format("Video Buffering: %%%d", percent));
             }
 
             @Override
             public void onPlaybackStateChange(boolean isPlaying) {
-                // TODO : call TestFairy.addEvent
+                TestFairy.addEvent(String.format("Video is %s", isPlaying ? "playing" : "paused"));
             }
 
             @Override
             public void onPlaybackPositionUpdate(int percent) {
-                // TODO : call TestFairy.addEvent
+                TestFairy.addEvent(String.format("Video position: %%%d", percent));
             }
 
             @Override
             public void onComplete() {
-                // TODO : call TestFairy.addEvent
+                TestFairy.addEvent("Video complete");
             }
 
             @Override
-            public void onError(String reason, String message) {
-                // TODO : call TestFairy.addEvent
+            public void onError(int reason, Object extra) {
+                TestFairy.addEvent(String.format("Video error: Reason: %d - Extra: %s", reason, extra != null ? extra.toString() : "null"));
             }
         };
     }
@@ -88,11 +90,11 @@ public final class TestFairyMediaPlayerGlue {
                     @Override
                     public void run() {
                         runnable.run();
-                        handler.postDelayed(runnable, 100);
+                        handler.postDelayed(currentPositionTracker, 100);
                     }
                 };
 
-                handler.postDelayed(runnable, 100);
+                handler.postDelayed(currentPositionTracker, 100);
             }
 
             @Override
@@ -102,15 +104,15 @@ public final class TestFairyMediaPlayerGlue {
                     currentPositionTracker = null;
                 }
             }
+
+            @Override
+            protected MediaPlayer getMediaPlayer() {
+                return mediaPlayer;
+            }
         });
 
         final CreatedFrom.FromMediaPlayer castedCreationMethod = (CreatedFrom.FromMediaPlayer) listener.createdFrom;
-        castedCreationMethod.registerCurrentPositionTracker(new Runnable() {
-            @Override
-            public void run() {
-                // TODO : bridge to TestFairy
-            }
-        });
+        castedCreationMethod.registerCurrentPositionTracker(CreatedFrom.FromMediaPlayer.createPositionTracker(mediaPlayer, listener));
 
         final PlayerWrapperImpl playerWrapper = listener.createPlayerWrapper();
 
@@ -134,7 +136,8 @@ public final class TestFairyMediaPlayerGlue {
 
         final TestFairyMediaPlayerGlue listener = new TestFairyMediaPlayerGlue(new CreatedFrom.FromMediaPlayerAdapter() {
             @Override
-            protected void registerCurrentPositionTracker(Runnable runnable) {
+            protected void registerCurrentPositionTracker(Runnable _) {
+                unRegisterCurrentPositionTracker();
                 playerAdapter.setProgressUpdatingEnabled(true);
             }
 
@@ -163,6 +166,9 @@ public final class TestFairyMediaPlayerGlue {
 
     private PlayerWrapperImpl createPlayerWrapper() {
         return new PlayerWrapperImpl() {
+
+            private int lastKnownBufferingPercent = -1;
+
             @Override
             public void onBufferingUpdate(MediaPlayer mp, int percent) {
                 if (createdFrom instanceof CreatedFrom.FromMediaPlayer) {
@@ -173,7 +179,10 @@ public final class TestFairyMediaPlayerGlue {
                     }
                 }
 
-                // TODO : bridge to TestFairy
+                if (lastKnownBufferingPercent != percent && testFairyBridge != null) {
+                    testFairyBridge.onBufferingUpdate(percent);
+                }
+                lastKnownBufferingPercent = percent;
             }
 
             @Override
@@ -186,23 +195,31 @@ public final class TestFairyMediaPlayerGlue {
                     }
                 }
 
-                // TODO : bridge to TestFairy
+                if (testFairyBridge != null) {
+                    testFairyBridge.onComplete();
+                }
             }
 
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
+                boolean onErrorResult = false;
+
                 if (createdFrom instanceof CreatedFrom.FromMediaPlayer) {
                     CreatedFrom.FromMediaPlayer castedCreationMethod = (CreatedFrom.FromMediaPlayer) createdFrom;
 
                     if (castedCreationMethod.onErrorListener != null) {
-                        castedCreationMethod.onErrorListener.onError(mp, what, extra);
+                        onErrorResult = castedCreationMethod.onErrorListener.onError(mp, what, extra);
                     }
                 }
 
-                return false;
+                if (testFairyBridge != null) {
+                    testFairyBridge.onError(what, extra);
+                }
 
-                // TODO : bridge to TestFairy
+                return onErrorResult;
             }
+
+            private boolean lastKnownPlaybackStateIsPlaying = false;
 
             @Override
             public void onMediaTimeDiscontinuity(MediaPlayer mp, MediaTimestamp mts) {
@@ -214,7 +231,10 @@ public final class TestFairyMediaPlayerGlue {
                     }
                 }
 
-                // TODO : bridge to TestFairy
+                if (mp.isPlaying() != lastKnownPlaybackStateIsPlaying && testFairyBridge != null) {
+                    testFairyBridge.onPlaybackStateChange(mp.isPlaying());
+                }
+                lastKnownPlaybackStateIsPlaying = mp.isPlaying();
             }
 
             @Override
@@ -272,6 +292,35 @@ public final class TestFairyMediaPlayerGlue {
                     castedCreationMethod.onSeekCompleteListener = onSeekCompleteListener;
                 }
             }
+
+            @Override
+            public void trackPlaybackPosition() {
+                if (createdFrom instanceof CreatedFrom.FromMediaPlayer) {
+                    CreatedFrom.FromMediaPlayer castedCreationMethod = (CreatedFrom.FromMediaPlayer) createdFrom;
+
+                    TestFairyMediaPlayerGlue.this.createdFrom.registerCurrentPositionTracker(
+                            CreatedFrom.FromMediaPlayer.createPositionTracker(
+                                    castedCreationMethod.getMediaPlayer(),
+                                    TestFairyMediaPlayerGlue.this
+                            )
+                    );
+                }
+            }
+
+            @Override
+            public void untrackPlaybackPosition() {
+                TestFairyMediaPlayerGlue.this.createdFrom.unRegisterCurrentPositionTracker();
+            }
+
+            @Override
+            public void setTestFairyBridge(TestFairyBridge bridge) {
+                testFairyBridge = bridge;
+            }
+
+            @Override
+            public TestFairyBridge getTestFairyBridge() {
+                return testFairyBridge;
+            }
         };
     }
 
@@ -280,6 +329,9 @@ public final class TestFairyMediaPlayerGlue {
 
     private PlayerAdapterWrapperImpl createPlayerAdapterCallbacksWrapper(final PlayerAdapter.Callback originalCallbacks) {
         return new PlayerAdapterWrapperImpl() {
+
+            private boolean lastKnownPlaybackStateIsPlaying = false;
+
             @Override
             public void onPlayStateChanged(PlayerAdapter adapter) {
                 if (createdFrom instanceof CreatedFrom.FromMediaPlayerAdapter) {
@@ -292,7 +344,11 @@ public final class TestFairyMediaPlayerGlue {
                     originalCallbacks.onPlayStateChanged(adapter);
                 }
 
-                // TODO : bridge to TestFairy
+
+                if (adapter.isPlaying() != lastKnownPlaybackStateIsPlaying && testFairyBridge != null) {
+                    testFairyBridge.onPlaybackStateChange(adapter.isPlaying());
+                }
+                lastKnownPlaybackStateIsPlaying = adapter.isPlaying();
             }
 
             @Override
@@ -320,9 +376,12 @@ public final class TestFairyMediaPlayerGlue {
                     originalCallbacks.onPlayCompleted(adapter);
                 }
 
-                // TODO : bridge to TestFairy
+                if (testFairyBridge != null) {
+                    testFairyBridge.onComplete();
+                }
             }
 
+            private int lastKnownPlaybackPercent = -1;
             @Override
             public void onCurrentPositionChanged(PlayerAdapter adapter) {
                 if (createdFrom instanceof CreatedFrom.FromMediaPlayerAdapter) {
@@ -335,8 +394,18 @@ public final class TestFairyMediaPlayerGlue {
                     originalCallbacks.onCurrentPositionChanged(adapter);
                 }
 
-                // TODO : bridge to TestFairy
+                if (adapter.getDuration() != 0) {
+                    long currentPosition = adapter.getCurrentPosition();
+                    long percent = (currentPosition * 100) / adapter.getDuration();
+
+                    if (lastKnownPlaybackPercent != percent && testFairyBridge != null) {
+                        testFairyBridge.onPlaybackPositionUpdate((int) percent);
+                    }
+                    lastKnownPlaybackPercent = (int) percent;
+                }
             }
+
+            private int lastKnownBufferingPercent = -1;
 
             @Override
             public void onBufferedPositionChanged(PlayerAdapter adapter) {
@@ -350,7 +419,15 @@ public final class TestFairyMediaPlayerGlue {
                     originalCallbacks.onBufferedPositionChanged(adapter);
                 }
 
-                // TODO : bridge to TestFairy
+                if (adapter.getDuration() != 0) {
+                    long currentPosition = adapter.getBufferedPosition();
+                    long percent = (currentPosition * 100) / adapter.getDuration();
+
+                    if (lastKnownBufferingPercent != percent && testFairyBridge != null) {
+                        testFairyBridge.onBufferingUpdate((int) percent);
+                    }
+                    lastKnownBufferingPercent = (int) percent;
+                }
             }
 
             @Override
@@ -391,7 +468,10 @@ public final class TestFairyMediaPlayerGlue {
                     originalCallbacks.onError(adapter, errorCode, errorMessage);
                 }
 
-                // TODO : bridge to TestFairy
+                if (testFairyBridge != null) {
+                    testFairyBridge.onError(errorCode, errorMessage);
+                }
+
             }
 
             @Override
@@ -430,6 +510,26 @@ public final class TestFairyMediaPlayerGlue {
                     }
                 }
             }
+
+            @Override
+            public void trackPlaybackPosition() {
+                TestFairyMediaPlayerGlue.this.createdFrom.registerCurrentPositionTracker(null);
+            }
+
+            @Override
+            public void untrackPlaybackPosition() {
+                TestFairyMediaPlayerGlue.this.createdFrom.unRegisterCurrentPositionTracker();
+            }
+
+            @Override
+            public void setTestFairyBridge(TestFairyBridge bridge) {
+                testFairyBridge = bridge;
+            }
+
+            @Override
+            public TestFairyBridge getTestFairyBridge() {
+                return testFairyBridge;
+            }
         };
     }
     //////////////////////////////////////////////////////////////
@@ -446,6 +546,27 @@ public final class TestFairyMediaPlayerGlue {
             private MediaPlayer.OnErrorListener onErrorListener;
             private MediaPlayer.OnMediaTimeDiscontinuityListener onMediaTimeDiscontinuityListener;
             private MediaPlayer.OnSeekCompleteListener onSeekCompleteListener;
+
+            private static Runnable createPositionTracker(final MediaPlayer mediaPlayer, final TestFairyMediaPlayerGlue listener) {
+                return new Runnable() {
+                    private int lastKnownPlaybackPercent = -1;
+
+                    @Override
+                    public void run() {
+                        if (mediaPlayer.getDuration() != 0) {
+                            int currentPosition = mediaPlayer.getCurrentPosition();
+                            int percent = (currentPosition * 100) / mediaPlayer.getDuration();
+
+                            if (lastKnownPlaybackPercent != percent && listener.testFairyBridge != null) {
+                                listener.testFairyBridge.onPlaybackPositionUpdate(percent);
+                            }
+                            lastKnownPlaybackPercent = percent;
+                        }
+                    }
+                };
+            }
+
+            protected abstract MediaPlayer getMediaPlayer();
         }
 
         private abstract static class FromMediaPlayerAdapter extends CreatedFrom {
@@ -455,7 +576,7 @@ public final class TestFairyMediaPlayerGlue {
     //////////////////////////////////////////////////////////////
 
     // TestFairy Bridge
-    private interface TestFairyBridge {
+    public interface TestFairyBridge {
         void onBufferingUpdate(int percent);
 
         void onPlaybackStateChange(boolean isPlaying);
@@ -464,7 +585,7 @@ public final class TestFairyMediaPlayerGlue {
 
         void onComplete();
 
-        void onError(String reason, String message);
+        void onError(int reason, Object extra);
     }
     //////////////////////////////////////////////////////////////
 
@@ -479,10 +600,26 @@ public final class TestFairyMediaPlayerGlue {
         void setOnMediaTimeDiscontinuityListener(MediaPlayer.OnMediaTimeDiscontinuityListener onMediaTimeDiscontinuityListener);
 
         void setOnSeekCompleteListener(MediaPlayer.OnSeekCompleteListener onSeekCompleteListener);
+
+        void trackPlaybackPosition();
+
+        void untrackPlaybackPosition();
+
+        TestFairyBridge getTestFairyBridge();
+
+        void setTestFairyBridge(TestFairyBridge bridge);
     }
 
     public interface PlayerAdapterWrapper {
         void setCallbacks(PlayerAdapter.Callback callbacks);
+
+        void trackPlaybackPosition();
+
+        void untrackPlaybackPosition();
+
+        TestFairyBridge getTestFairyBridge();
+
+        void setTestFairyBridge(TestFairyBridge bridge);
     }
     //////////////////////////////////////////////////////////////
 }
