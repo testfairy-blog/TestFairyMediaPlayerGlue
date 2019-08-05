@@ -46,7 +46,7 @@ public final class TestFairyMediaPlayerGlue {
         this.testFairyBridge = new TestFairyBridge() {
             @Override
             public void onBufferingUpdate(int percent) {
-                TestFairy.addEvent(String.format("Video Buffering: %%%d", percent));
+                TestFairy.addEvent(String.format("Video Buffering: %d%%", percent));
             }
 
             @Override
@@ -56,7 +56,7 @@ public final class TestFairyMediaPlayerGlue {
 
             @Override
             public void onPlaybackPositionUpdate(int percent) {
-                TestFairy.addEvent(String.format("Video position: %%%d", percent));
+                TestFairy.addEvent(String.format("Video Position: %d%%", percent));
             }
 
             @Override
