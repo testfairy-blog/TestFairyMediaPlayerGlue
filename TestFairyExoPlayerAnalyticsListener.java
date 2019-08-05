@@ -1,4 +1,4 @@
-package com.google.android.exoplayer2.demo;
+package com.testfairy.tvtest.testfairy;
 
 import android.os.Handler;
 import android.view.Surface;
