@@ -99,7 +99,7 @@ public class TestFairyExoPlayerAnalyticsListener implements AnalyticsListener {
         TestFairy.addEvent("Video stutters due to a seek");
         break;
       case SimpleExoPlayer.DISCONTINUITY_REASON_SEEK_ADJUSTMENT:
-        TestFairy.addEvent("Video stutters due to seel adjustment");
+        TestFairy.addEvent("Video stutters due to seek adjustment");
         break;
       case SimpleExoPlayer.DISCONTINUITY_REASON_AD_INSERTION:
         TestFairy.addEvent("Video stutters due to an inserted ad");
